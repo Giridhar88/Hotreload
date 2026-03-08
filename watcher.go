@@ -54,7 +54,7 @@ func shouldWatch(path string) bool {
 
 // watchRecursive walks the directory tree starting at root
 // and adds all subdirectories to the watcher.
-var watchingFiles map[string]bool
+var watchingFiles = make(map[string]bool)
 
 func watchRecursive(root string, watcher *fsnotify.Watcher) error {
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -88,10 +88,20 @@ func startWatching(ctx context.Context, watcher *fsnotify.Watcher, onChange chan
 			if !ok {
 				return
 			}
+			if event.Has(fsnotify.Create) {
+				info, err := os.Stat(event.Name)
+				if err == nil && info.IsDir() {
+					watchRecursive(event.Name, watcher)
+
+				}
+				if event.Has(fsnotify.Remove) {
+					slog.Info("path removed", "path", event.Name)
+					watchingFiles[event.Name] = false
+				}
+			}
 			if shouldWatch(event.Name) {
 				onChange <- event.Name
 			}
-			_ = event
 
 		case err, ok := <-watcher.Errors:
 			if !ok {
