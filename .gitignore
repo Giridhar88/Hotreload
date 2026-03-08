@@ -1,5 +1,6 @@
 # Build output
 /bin/
+/hotreload
 
 # Go
 *.exe
