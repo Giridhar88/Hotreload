@@ -1,4 +1,4 @@
-# hotreload
+# <span style="color:blue"> hotreload </span>
 
 `hotreload` is a Go CLI tool that watches a project directory, rebuilds on change, and restarts the server automatically.
 
@@ -169,12 +169,4 @@ Persist these values via your distro's sysctl config if needed.
 - Ensure edited files are under `--root`
 - Check file path is not filtered by ignore rules
 - Confirm build command works independently
-
-## Assignment notes
-
-This repository includes:
-
-- `hotreload` source code
-- `testserver/` for demonstration
-- `Makefile` to build, test, and run demo
 
