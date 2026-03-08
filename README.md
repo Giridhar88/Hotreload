@@ -170,3 +170,6 @@ Persist these values via your distro's sysctl config if needed.
 - Check file path is not filtered by ignore rules
 - Confirm build command works independently
 
+## Loom video
+Demonstration video of the tool
+[Video Link](https://www.loom.com/share/b0486c05c9514e3097bb33dac865799b)
