@@ -22,10 +22,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// slog is Go's structured logging package (added in Go 1.21).
-	// The assignment requires using log/slog specifically.
-	// Structured logging means each log entry has key-value pairs,
-	// which makes logs searchable and parseable (vs plain fmt.Println).
 	slog.Info("hotreload starting",
 		"root", *root,
 		"build", *build,
@@ -33,14 +29,34 @@ func main() {
 	)
 
 	watcher, err := fsnotify.NewWatcher()
-	defer watcher.close()
 	if err != nil {
-		log.Error("failed to create watcher", "error", err)
+		slog.Error("failed to create watcher", "error", err)
+		os.Exit(1)
+	}
+	defer watcher.Close()
+	if err := watcher.Add(*root); err != nil {
+		slog.Error("failed to watch direcotry", "path", *root, "error", err)
 		os.Exit(1)
 	}
 
-	// TODO: Step 3 — debounce events
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				slog.Error("failed to listen event", "error", err)
+				os.Exit(1)
+			}
+			slog.Info("event received", "event", event.String())
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				slog.Error("failed to listen error", "error", err)
+				os.Exit(1)
+			}
+			slog.Error("watcher error", "error", err)
+		}
 
-	// TODO: Step 4 — run build command
-	// TODO: Step 5 — run exec command
+	}
+	// TODO: Step 3 -  debounce events
+	// TODO: Step 4 - run build command
+	// TODO: Step 5 - run exec command
 }
