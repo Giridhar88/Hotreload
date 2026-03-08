@@ -12,7 +12,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("request received: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
-		fmt.Fprintf(w, "Hello from  test server! Time: %s\n", time.Now().Format(time.RFC3339))
+		fmt.Fprintf(w, " from  test server! Time: %s\n", time.Now().Format(time.RFC3339))
 	})
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

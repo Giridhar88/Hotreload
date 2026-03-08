@@ -14,9 +14,48 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+var customIgnore []string
+
+func setCustomIgnore(ignore []string) {
+	customIgnore = ignore
+}
+
+func matchesCustomIgnore(path string) bool {
+	if len(customIgnore) == 0 {
+		return false
+	}
+
+	cleanPath := filepath.Clean(path)
+	base := filepath.Base(cleanPath)
+
+	for _, pattern := range customIgnore {
+		p := strings.TrimSpace(pattern)
+		if p == "" {
+			continue
+		}
+		p = filepath.Clean(p)
+
+		if cleanPath == p || base == p {
+			return true
+		}
+
+		if strings.Contains(cleanPath, string(os.PathSeparator)+p+string(os.PathSeparator)) ||
+			strings.HasPrefix(cleanPath, p+string(os.PathSeparator)) ||
+			strings.HasSuffix(cleanPath, string(os.PathSeparator)+p) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // shouldWatch returns true if the file path is a .go file
 // and not inside ignored directories like .git, node_modules, etc.
 func shouldWatch(path string) bool {
+	if matchesCustomIgnore(path) {
+		return false
+	}
+
 	// Ignored directories — never care about changes inside these
 	ignoredDirs := []string{".git", "node_modules", "vendor", ".idea", ".vscode", "bin", "tmp"}
 	for _, dir := range ignoredDirs {

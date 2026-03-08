@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,11 +19,12 @@ func main() {
 	root := flag.String("root", ".", "directory to watch for file changes")
 	build := flag.String("build", "", "command to build the project")
 	execCmd := flag.String("exec", "", "command to run the built server")
+	ignore := flag.String("ignore", "", "comma-separated file or directory names/paths to ignore")
 
 	flag.Parse()
 
 	if *build == "" || *execCmd == "" {
-		fmt.Fprintf(os.Stderr, "Usage: hotreload --root <dir> --build <cmd> --exec <cmd>\n\n")
+		fmt.Fprintf(os.Stderr, "Usage: hotreload --root <dir> --build <cmd> --exec <cmd> [--ignore <patterns>]\n\n")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
@@ -30,7 +33,12 @@ func main() {
 		"root", *root,
 		"build", *build,
 		"exec", *execCmd,
+		"ignore", *ignore,
 	)
+
+	if *ignore != "" {
+		setCustomIgnore(parseIgnoreList(*ignore))
+	}
 
 	// Graceful shutdown on Ctrl+C or SIGTERM
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -74,4 +82,17 @@ func main() {
 			debouncer.signal()
 		}
 	}
+}
+
+func parseIgnoreList(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, filepath.Clean(p))
+	}
+	return out
 }

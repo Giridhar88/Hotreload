@@ -15,6 +15,7 @@ It is designed for backend development workflows where repeatedly stopping, rebu
 - Cancels an in-progress rebuild if newer changes arrive, then rebuilds latest state
 - Handles directory create/remove/rename events while running
 - Ignores common noise (`.git`, `node_modules`, editor temp files, binary artifacts)
+- Supports extra project-specific ignore patterns through `--ignore`
 
 ## Architecture
 
@@ -61,7 +62,7 @@ Binary output:
 ## Usage
 
 ```bash
-hotreload --root <project-folder> --build "<build-command>" --exec "<run-command>"
+hotreload --root <project-folder> --build "<build-command>" --exec "<run-command>" [--ignore "<patterns>"]
 ```
 
 Example:
@@ -73,11 +74,22 @@ Example:
   --exec "./bin/server"
 ```
 
+Example with custom ignores:
+
+```bash
+./bin/hotreload \
+  --root ./myproject \
+  --build "go build -o ./bin/server ./cmd/server" \
+  --exec "./bin/server" \
+  --ignore "tmp,generated,cmd/internal,.env"
+```
+
 ### Flags
 
 - `--root`: directory to watch recursively
 - `--build`: shell command used to build project
 - `--exec`: shell command used to run built server
+- `--ignore`: optional comma-separated file or directory names/paths to ignore; default is empty (no additional ignores)
 
 ## Demo with included test server
 
@@ -166,4 +178,3 @@ This repository includes:
 - `testserver/` for demonstration
 - `Makefile` to build, test, and run demo
 
-Add your Loom link and submission details here before final submission.
