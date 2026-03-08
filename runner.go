@@ -16,9 +16,9 @@ import (
 type Runner struct {
 	buildCmd string
 	execCmd  string
-	cmd      *exec.Cmd    // currently running server process
+	cmd      *exec.Cmd     // currently running server process
 	done     chan struct{} // closed when the server process exits
-	mu       sync.Mutex   // protects cmd from concurrent access
+	mu       sync.Mutex    // protects cmd from concurrent access
 }
 
 func newRunner(buildCmd, execCmd string) *Runner {
@@ -117,14 +117,57 @@ func (r *Runner) stop() {
 // loop listens on the rebuild channel and restarts the server each time.
 // It returns when ctx is cancelled.
 func (r *Runner) loop(ctx context.Context, rebuild <-chan struct{}) {
+	var (
+		running       bool
+		pending       bool
+		restartDone   chan struct{}
+		restartCancel context.CancelFunc
+	)
+
+	startRestart := func() {
+		restartCtx, cancel := context.WithCancel(ctx)
+		restartCancel = cancel
+		restartDone = make(chan struct{})
+		running = true
+
+		go func() {
+			r.restart(restartCtx)
+			close(restartDone)
+		}()
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
+			if running && restartCancel != nil {
+				restartCancel()
+			}
+			if running && restartDone != nil {
+				<-restartDone
+			}
 			r.stop()
 			slog.Info("runner stopping")
 			return
 		case <-rebuild:
-			r.restart(ctx)
+			if !running {
+				startRestart()
+				continue
+			}
+
+			pending = true
+			if restartCancel != nil {
+				slog.Info("new change detected during build/restart; canceling current run")
+				restartCancel()
+			}
+		case <-restartDone:
+			running = false
+			restartDone = nil
+			restartCancel = nil
+
+			if pending {
+				pending = false
+				startRestart()
+			}
 		}
 	}
 }
