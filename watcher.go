@@ -92,17 +92,16 @@ func startWatching(ctx context.Context, watcher *fsnotify.Watcher, onChange chan
 				info, err := os.Stat(event.Name)
 				if err == nil && info.IsDir() {
 					watchRecursive(event.Name, watcher)
-
 				}
-				if event.Has(fsnotify.Remove) {
-					slog.Info("path removed", "path", event.Name)
-					watchingFiles[event.Name] = false
-				}
+			}
+			if event.Has(fsnotify.Remove) {
+				slog.Info("path removed", "path", event.Name)
+				watchingFiles[event.Name] = false
+				watcher.Remove(event.Name)
 			}
 			if shouldWatch(event.Name) {
 				onChange <- event.Name
 			}
-
 		case err, ok := <-watcher.Errors:
 			if !ok {
 				return
