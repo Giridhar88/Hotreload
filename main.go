@@ -34,29 +34,5 @@ func main() {
 		os.Exit(1)
 	}
 	defer watcher.Close()
-	if err := watcher.Add(*root); err != nil {
-		slog.Error("failed to watch direcotry", "path", *root, "error", err)
-		os.Exit(1)
-	}
 
-	for {
-		select {
-		case event, ok := <-watcher.Events:
-			if !ok {
-				slog.Error("failed to listen event", "error", err)
-				os.Exit(1)
-			}
-			slog.Info("event received", "event", event.String())
-		case err, ok := <-watcher.Errors:
-			if !ok {
-				slog.Error("failed to listen error", "error", err)
-				os.Exit(1)
-			}
-			slog.Error("watcher error", "error", err)
-		}
-
-	}
-	// TODO: Step 3 -  debounce events
-	// TODO: Step 4 - run build command
-	// TODO: Step 5 - run exec command
 }
