@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -15,8 +16,9 @@ import (
 type Runner struct {
 	buildCmd string
 	execCmd  string
-	cmd      *exec.Cmd  // currently running server process
-	mu       sync.Mutex // protects cmd from concurrent access
+	cmd      *exec.Cmd    // currently running server process
+	done     chan struct{} // closed when the server process exits
+	mu       sync.Mutex   // protects cmd from concurrent access
 }
 
 func newRunner(buildCmd, execCmd string) *Runner {
@@ -31,6 +33,8 @@ func newRunner(buildCmd, execCmd string) *Runner {
 func (r *Runner) restart(ctx context.Context) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	start := time.Now()
 
 	// Step 1: Kill the old server process (if running)
 	r.stopLocked()
@@ -63,15 +67,14 @@ func (r *Runner) restart(ctx context.Context) bool {
 	}
 
 	slog.Info("server started", "pid", r.cmd.Process.Pid)
+	fmt.Printf("\033[32m✓ restarted in %s\033[0m\n", time.Since(start).Round(time.Millisecond))
 
-	// Wait for the process in a separate goroutine so we don't block
+	// Wait for the process in a separate goroutine so we don't block.
+	// When the process exits, close the done channel so stopLocked knows.
+	r.done = make(chan struct{})
 	go func() {
-		err := r.cmd.Wait()
-		if err != nil {
-			slog.Warn("server exited", "error", err)
-		} else {
-			slog.Info("server exited cleanly")
-		}
+		r.cmd.Wait()
+		close(r.done)
 	}()
 
 	return true
@@ -91,15 +94,9 @@ func (r *Runner) stopLocked() {
 	// This ensures child processes are killed too
 	_ = syscall.Kill(-pid, syscall.SIGTERM)
 
-	// Give it a moment to shut down gracefully
-	done := make(chan struct{})
-	go func() {
-		r.cmd.Wait()
-		close(done)
-	}()
-
+	// Wait for the process to exit (using the done channel from restart)
 	select {
-	case <-done:
+	case <-r.done:
 		slog.Info("server stopped gracefully")
 	case <-time.After(3 * time.Second):
 		// Process didn't stop nicely — force kill
