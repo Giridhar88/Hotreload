@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -56,6 +59,27 @@ func shouldWatch(path string) bool {
 // and adds all subdirectories to the watcher.
 var watchingFiles = make(map[string]bool)
 
+func isWatchLimitErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EMFILE) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no space left on device") ||
+		strings.Contains(msg, "too many open files")
+}
+
+func removeWatchIfPresent(watcher *fsnotify.Watcher, path string) {
+	if !slices.Contains(watcher.WatchList(), path) {
+		return
+	}
+	if err := watcher.Remove(path); err != nil {
+		slog.Debug("watcher remove failed", "path", path, "error", err)
+	}
+}
+
 func watchRecursive(root string, watcher *fsnotify.Watcher) error {
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -69,8 +93,25 @@ func watchRecursive(root string, watcher *fsnotify.Watcher) error {
 			watchingFiles[path] = false
 			return filepath.SkipDir
 		}
+		if slices.Contains(watcher.WatchList(), path) {
+			watchingFiles[path] = true
+			return nil
+		}
+		if err := watcher.Add(path); err != nil {
+			watchingFiles[path] = false
+			if isWatchLimitErr(err) {
+				slog.Error("watcher limit reached; directory not watched",
+					"path", path,
+					"error", err,
+					"hint", "increase inotify limits (max_user_watches / max_user_instances) or reduce watched dirs",
+				)
+				return filepath.SkipDir
+			}
+			slog.Error("failed to add watch", "path", path, "error", err)
+			return nil
+		}
 		watchingFiles[path] = true
-		return watcher.Add(path)
+		return nil
 	})
 }
 
@@ -91,13 +132,19 @@ func startWatching(ctx context.Context, watcher *fsnotify.Watcher, onChange chan
 			if event.Has(fsnotify.Create) {
 				info, err := os.Stat(event.Name)
 				if err == nil && info.IsDir() {
-					watchRecursive(event.Name, watcher)
+					if err := watchRecursive(event.Name, watcher); err != nil {
+						slog.Error("failed to watch new directory", "path", event.Name, "error", err)
+					}
 				}
 			}
-			if event.Has(fsnotify.Remove) {
-				slog.Info("path removed", "path", event.Name)
+			if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
+				op := "removed"
+				if event.Has(fsnotify.Rename) {
+					op = "renamed"
+				}
+				slog.Info("path "+op, "path", event.Name)
 				watchingFiles[event.Name] = false
-				watcher.Remove(event.Name)
+				removeWatchIfPresent(watcher, event.Name)
 			}
 			if shouldWatch(event.Name) {
 				onChange <- event.Name
@@ -105,6 +152,13 @@ func startWatching(ctx context.Context, watcher *fsnotify.Watcher, onChange chan
 		case err, ok := <-watcher.Errors:
 			if !ok {
 				return
+			}
+			if isWatchLimitErr(err) {
+				slog.Error("watcher limit error",
+					"error", err,
+					"hint", "raise inotify limits (max_user_watches / max_user_instances)",
+				)
+				continue
 			}
 			slog.Error("watcher error", "error", err)
 		}
